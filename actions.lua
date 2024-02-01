@@ -1,6 +1,6 @@
 local aura_env, aura_config = aura_env, aura_env.config
 local pairs, ipairs, tinsert, stformat, next = pairs, ipairs, table.insert, string.format, next
-local GetSpellInfo, SendChatMessage, GetUnitName, GetTime = GetSpellInfo, SendChatMessage, GetUnitName, GetTime
+local GetSpellInfo, SendChatMessage, GetUnitName, GetTime, twipe = GetSpellInfo, SendChatMessage, GetUnitName, GetTime, table.wipe
 
 --[[ CONFIGURATIONS --]]
 
@@ -72,9 +72,9 @@ local remorselessWinterLastCastTime = nil
 --[[ LOCAL FUNCTIONS --]]
 
 local function clear_caches_and_states()
-    playerSpecCache = {}
-    valkGrabCache = {}
-    raidCompromisedCache = {}
+    twipe(playerSpecCache)
+    twipe(valkGrabCache)
+    twipe(raidCompromisedCache)
     valkSummonLastCastTime = nil
     remorselessWinterCount = 0
     remorselessWinterLastCastTime = nil
@@ -222,8 +222,8 @@ aura_env.process_summon = function(allstates, spellId)
     if spellId == VALK_SUMMON_SPELL_ID then
         if valkSummonLastCastTime == nil or ((GetTime() - valkSummonLastCastTime) > 5) then
             valkSummonLastCastTime = GetTime()
-            valkGrabCache = {}
-            raidCompromisedCache = {}
+            twipe(valkGrabCache)
+            twipe(raidCompromisedCache)
             debug("resetting valk grab caches")
         end
     end
