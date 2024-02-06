@@ -7,6 +7,7 @@
 
 function(allstates, event, ...)
     if event == "OPTIONS" then
+        aura_env.mock_ui(allstates)
         return
     end
 

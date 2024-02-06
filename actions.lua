@@ -1,6 +1,7 @@
 local aura_env, aura_config = aura_env, aura_env.config
-local pairs, ipairs, tinsert, stformat, next = pairs, ipairs, table.insert, string.format, next
-local GetSpellInfo, SendChatMessage, GetUnitName, GetTime, twipe = GetSpellInfo, SendChatMessage, GetUnitName, GetTime, table.wipe
+local tconcat, tinsert, tsort, twipe =  table.concat, table.insert, table.sort, table.wipe
+local pairs, ipairs, stformat, next, select = pairs, ipairs, string.format, next, select
+local GetSpellInfo, SendChatMessage, GetUnitName, GetTime = GetSpellInfo, SendChatMessage, GetUnitName, GetTime
 
 --[[ CONFIGURATIONS --]]
 
@@ -15,6 +16,12 @@ local COMPROMISING_SCENARIO_TABLE = {
     INFEST_COMPROMISED = { "DISC" },
     HOLY_WRATH_COMPROMISED = { "RETPALA", "PROTPALA" },
     TANK_HEALING_COMPROMISED = { "HPALA" }
+}
+
+local COMPROMISING_SCENARIO_UI_CONFIG_TABLE = {
+    INFEST_COMPROMISED = { spellIcon = 70541, order = 1 },
+    HOLY_WRATH_COMPROMISED = { spellIcon = 48817, order = 2 },
+    TANK_HEALING_COMPROMISED = { spellIcon = 56539, order = 3 }
 }
 
 --[[ CUSTOM OPTIONS MAPPING --]]
@@ -51,6 +58,14 @@ for spec, spellNames in pairs(SPEC_IDENTIFICATION_TABLE_INTERNAL) do
     end
 end
 
+local COMPROMISING_SCENARIO_UI_CONFIG_TABLE_INTERNAL = {}
+for scenario, uiData in pairs(COMPROMISING_SCENARIO_UI_CONFIG_TABLE) do
+    COMPROMISING_SCENARIO_UI_CONFIG_TABLE_INTERNAL[scenario] = {
+        spellIcon = select(3, GetSpellInfo(uiData.spellIcon)),
+        order = uiData.order
+    }
+end
+
 local VALK_SUMMON_SPELL_ID = 69037
 local REMORSELESS_WINTER_SPELL_NAME = GetSpellInfo(68981)
 
@@ -70,6 +85,18 @@ local remorselessWinterCount = 0
 local remorselessWinterLastCastTime = nil
 
 --[[ LOCAL FUNCTIONS --]]
+local function extract_sorted_table_keys(aTable)
+    local keys = {}
+    if aTable == nil then
+        return keys
+    end
+
+    for key, _ in pairs(aTable) do
+        tinsert(keys, key)
+    end
+    tsort(keys)
+    return keys
+end
 
 local function clear_caches_and_states()
     twipe(playerSpecCache)
@@ -99,6 +126,20 @@ local function clear_visuals(allstates)
         state.changed = true;
     end
     debug("all states cleared")
+end
+
+local function update_ui(allstates, affectedScenarios)
+    for scenario in affectedScenarios do
+        local state = allstates[scenario]
+        if not state then
+            local uiData = COMPROMISING_SCENARIO_UI_CONFIG_TABLE_INTERNAL[scenario]
+            state = { icon = uiData.spellIcon, index = uiData.order, tooltip = scenario, tooltipWrap = true }
+            allstates[scenario] = state
+        end
+        state.show = next(raidCompromisedCache) and next(raidCompromisedCache[scenario]) ~= nil
+        state.changed = true
+        state.compromisedNames = tconcat(extract_sorted_table_keys(allstates[scenario]), ", ")
+    end
 end
 
 local function increment_remorseless_winter_count()
@@ -140,8 +181,9 @@ local function evaluate_raid_effect_on_player_incapacitation(unitName)
     return affectedScenarios
 end
 
-local function process_raid_compromised_cache_changes(unitName)
-    for _, scenario in ipairs(evaluate_raid_effect_on_player_incapacitation(unitName)) do
+local function process_raid_compromised_cache_changes(allstates, unitName)
+    local affectedScenarios = evaluate_raid_effect_on_player_incapacitation(unitName)
+    for _, scenario in ipairs(affectedScenarios) do
         announce(stformat("%s - %s grabbed", scenario, unitName))
         if raidCompromisedCache[scenario] == nil then
             raidCompromisedCache[scenario] = { unitName = true }
@@ -149,33 +191,43 @@ local function process_raid_compromised_cache_changes(unitName)
             raidCompromisedCache[scenario][unitName] = true
         end
     end
+
+    if next(affectedScenarios) ~= nil then
+        update_ui(allstates, affectedScenarios)
+    end
 end
 
-local function process_raid_compromised_cache_recovery(unitName)
+local function process_raid_compromised_cache_recovery(allstates, unitName)
     if raidCompromisedCache == nil or next(raidCompromisedCache) == nil then
         return
     end
 
+    local affectedScenarios = {}
     for scenario, _ in pairs(raidCompromisedCache) do
         if raidCompromisedCache[scenario][unitName] ~= nil then
             debug(stformat("%s - %s dropped", scenario, unitName))
-        end
 
-        raidCompromisedCache[scenario][unitName] = nil
-        if next(raidCompromisedCache[scenario]) == nil then
-            raidCompromisedCache[scenario] = nil
+            raidCompromisedCache[scenario][unitName] = nil
+            if next(raidCompromisedCache[scenario]) == nil then
+                raidCompromisedCache[scenario] = nil
+            end
+            tinsert(affectedScenarios, scenario)
         end
+    end
+
+    if next(affectedScenarios) ~= nil then
+        update_ui(allstates, affectedScenarios)
     end
 end
 
-local function process_valk_cache_changes(event, unitName)
+local function process_valk_cache_changes(allstates, event, unitName)
     local valkGrabInfo = valkGrabCache[unitName]
     if event == "UNIT_EXITING_VEHICLE" and valkGrabInfo ~= nil
             and (GetTime() - valkGrabInfo.grabbedTime > 3)
             and (valkGrabInfo.droppedTime == nil) then
         --if valk grabbed detected before, and the exiting event was fired >1s after the grabbed time, then it's a real exit
         valkGrabCache[unitName].droppedTime = GetTime()
-        process_raid_compromised_cache_recovery(unitName)
+        process_raid_compromised_cache_recovery(allstates, unitName)
         debug(stformat("valk dropped player: %s", unitName))
     elseif event == "UNIT_ENTERING_VEHICLE" and valkGrabInfo == nil then
         --testing shows a spam of both event fired when grabbed. we use both to identify a grab
@@ -183,7 +235,7 @@ local function process_valk_cache_changes(event, unitName)
             grabbedTime = GetTime(),
             droppedTime = nil
         }
-        process_raid_compromised_cache_changes(unitName)
+        process_raid_compromised_cache_changes(allstates, unitName)
         debug(stformat("valk grabbed player: %s", unitName))
     end
 end
@@ -232,7 +284,21 @@ end
 aura_env.handle_vehicle_transitioning = function(allstates, event, uid)
     if is_valk_transition(event) then
         local unitName = GetUnitName(uid)
-        process_valk_cache_changes(event, unitName)
+        process_valk_cache_changes(allstates, event, unitName)
+    end
+end
+
+aura_env.mock_ui = function(allstates)
+    for scenario, uiData in pairs(COMPROMISING_SCENARIO_UI_CONFIG_TABLE_INTERNAL) do
+        allstates[scenario] = {
+            icon = uiData.spellIcon,
+            index = uiData.order,
+            show = true,
+            changed = true,
+            compromisedNames = "Test Player Name",
+            tooltip = scenario,
+            tooltipWrap = true
+        }
     end
 end
 
