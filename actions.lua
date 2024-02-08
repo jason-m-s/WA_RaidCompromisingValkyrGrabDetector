@@ -129,7 +129,7 @@ local function clear_visuals(allstates)
 end
 
 local function update_ui(allstates, affectedScenarios)
-    for scenario in affectedScenarios do
+    for _, scenario in ipairs(affectedScenarios) do
         local state = allstates[scenario]
         if not state then
             local uiData = COMPROMISING_SCENARIO_UI_CONFIG_TABLE_INTERNAL[scenario]
