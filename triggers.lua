@@ -7,8 +7,7 @@
 
 function(allstates, event, ...)
     if event == "OPTIONS" then
-        aura_env.mock_ui(allstates)
-        return
+        return aura_env.mock_ui(allstates)
     end
 
     if aura_env.can_reset_caches(event) then
@@ -23,6 +22,7 @@ function(allstates, event, ...)
     if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_SUCCEEDED" then
         local casterUid, spellName = ...
         aura_env.process_spell_cast(event, casterUid, spellName)
+        return
     end
 
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
@@ -30,11 +30,12 @@ function(allstates, event, ...)
         if subEvent == "SPELL_SUMMON" and spellId ~= nil then
             aura_env.process_summon(allstates, spellId)
         end
+        return
     end
 
     if event == "UNIT_ENTERING_VEHICLE" or event == "UNIT_EXITING_VEHICLE" then
         local uid = ...
-        aura_env.handle_vehicle_transitioning(allstates, event, uid)
+        return aura_env.handle_vehicle_transitioning(allstates, event, uid)
     end
 end
 

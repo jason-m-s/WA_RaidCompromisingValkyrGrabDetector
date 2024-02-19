@@ -87,11 +87,7 @@ local remorselessWinterLastCastTime = nil
 --[[ LOCAL FUNCTIONS --]]
 local function extract_sorted_table_keys(aTable)
     local keys = {}
-    if aTable == nil then
-        return keys
-    end
-
-    for key, _ in pairs(aTable) do
+    for key in pairs(aTable or {}) do
         tinsert(keys, key)
     end
     tsort(keys)
@@ -136,9 +132,9 @@ local function update_ui(allstates, affectedScenarios)
             state = { icon = uiData.spellIcon, index = uiData.order, tooltip = scenario, tooltipWrap = true }
             allstates[scenario] = state
         end
-        state.show = next(raidCompromisedCache) and next(raidCompromisedCache[scenario]) ~= nil
+        state.show = next(raidCompromisedCache) ~= nil and next(raidCompromisedCache[scenario]) ~= nil
         state.changed = true
-        state.compromisedNames = tconcat(extract_sorted_table_keys(allstates[scenario]), ", ")
+        state.compromisedNames = tconcat(extract_sorted_table_keys(raidCompromisedCache[scenario]), ", ")
     end
 end
 
@@ -185,15 +181,13 @@ local function process_raid_compromised_cache_changes(allstates, unitName)
     local affectedScenarios = evaluate_raid_effect_on_player_incapacitation(unitName)
     for _, scenario in ipairs(affectedScenarios) do
         announce(stformat("%s - %s grabbed", scenario, unitName))
-        if raidCompromisedCache[scenario] == nil then
-            raidCompromisedCache[scenario] = { unitName = true }
-        else
-            raidCompromisedCache[scenario][unitName] = true
-        end
+        raidCompromisedCache[scenario] = raidCompromisedCache[scenario] or {}
+        raidCompromisedCache[scenario][unitName] = true
     end
 
     if next(affectedScenarios) ~= nil then
         update_ui(allstates, affectedScenarios)
+        return true
     end
 end
 
@@ -203,12 +197,12 @@ local function process_raid_compromised_cache_recovery(allstates, unitName)
     end
 
     local affectedScenarios = {}
-    for scenario, _ in pairs(raidCompromisedCache) do
-        if raidCompromisedCache[scenario][unitName] ~= nil then
+    for scenario, compromisedNames in pairs(raidCompromisedCache) do
+        if compromisedNames[unitName] ~= nil then
             debug(stformat("%s - %s dropped", scenario, unitName))
 
-            raidCompromisedCache[scenario][unitName] = nil
-            if next(raidCompromisedCache[scenario]) == nil then
+            compromisedNames[unitName] = nil
+            if next(compromisedNames) == nil then
                 raidCompromisedCache[scenario] = nil
             end
             tinsert(affectedScenarios, scenario)
@@ -217,6 +211,7 @@ local function process_raid_compromised_cache_recovery(allstates, unitName)
 
     if next(affectedScenarios) ~= nil then
         update_ui(allstates, affectedScenarios)
+        return true
     end
 end
 
@@ -227,16 +222,16 @@ local function process_valk_cache_changes(allstates, event, unitName)
             and (valkGrabInfo.droppedTime == nil) then
         --if valk grabbed detected before, and the exiting event was fired >1s after the grabbed time, then it's a real exit
         valkGrabCache[unitName].droppedTime = GetTime()
-        process_raid_compromised_cache_recovery(allstates, unitName)
         debug(stformat("valk dropped player: %s", unitName))
+        return process_raid_compromised_cache_recovery(allstates, unitName)
     elseif event == "UNIT_ENTERING_VEHICLE" and valkGrabInfo == nil then
         --testing shows a spam of both event fired when grabbed. we use both to identify a grab
         valkGrabCache[unitName] = {
             grabbedTime = GetTime(),
             droppedTime = nil
         }
-        process_raid_compromised_cache_changes(allstates, unitName)
         debug(stformat("valk grabbed player: %s", unitName))
+        return process_raid_compromised_cache_changes(allstates, unitName)
     end
 end
 
@@ -284,7 +279,7 @@ end
 aura_env.handle_vehicle_transitioning = function(allstates, event, uid)
     if is_valk_transition(event) then
         local unitName = GetUnitName(uid)
-        process_valk_cache_changes(allstates, event, unitName)
+        return process_valk_cache_changes(allstates, event, unitName)
     end
 end
 
@@ -300,5 +295,5 @@ aura_env.mock_ui = function(allstates)
             tooltipWrap = true
         }
     end
+    return true
 end
-
