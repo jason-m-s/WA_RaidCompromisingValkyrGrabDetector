@@ -25,7 +25,7 @@ local COMPROMISING_SCENARIO_UI_CONFIG_TABLE = {
 }
 
 --[[ CUSTOM OPTIONS MAPPING --]]
-local ANNOUNCE_CHANNEL_CUSTOM_OPTIONS = { "NONE", "WHISPER", "SAY", "RAID_WARNING" }
+local ANNOUNCE_CHANNEL_CUSTOM_OPTIONS = { "NONE", "PRINT", "WHISPER", "SAY", "RAID_WARNING" }
 
 --[[ CONSTANTS --]]
 
@@ -105,8 +105,12 @@ end
 
 local function announce(message)
     local announceChannel = ANNOUNCE_CHANNEL_CUSTOM_OPTIONS[aura_config.announceChannel]
-    if announceChannel and announceChannel ~= "NONE" then
-        SendChatMessage(message, announceChannel, nil, GetUnitName("player"));
+    if announceChannel then
+        if announceChannel == "PRINT" then
+            print(message)
+        elseif announceChannel ~= "NONE" then
+            SendChatMessage(message, announceChannel, nil, GetUnitName("player"));
+        end
     end
 end
 
@@ -138,11 +142,15 @@ local function update_ui(allstates, affectedScenarios)
     end
 end
 
-local function increment_remorseless_winter_count()
+local function increment_remorseless_winter_count(allstates)
     if not remorselessWinterLastCastTime or ((GetTime() - remorselessWinterLastCastTime) > 60) then
         remorselessWinterCount = remorselessWinterCount + 1
         remorselessWinterLastCastTime = GetTime()
         debug(stformat("remorseless winter: %s", remorselessWinterCount))
+    end
+
+    if remorselessWinterCount == 2 then
+        clear_visuals(allstates)
     end
 end
 
@@ -257,9 +265,9 @@ aura_env.reset_aura = function(allstates)
     debug("resetting aura")
 end
 
-aura_env.process_spell_cast = function(event, casterUid, spellName)
+aura_env.process_spell_cast = function(allstates, event, casterUid, spellName)
     if event == "UNIT_SPELLCAST_START" and spellName == REMORSELESS_WINTER_SPELL_NAME then
-        increment_remorseless_winter_count()
+        increment_remorseless_winter_count(allstates)
     elseif valkSummonLastCastTime == nil and SPEC_IDENTIFYING_SPELL_NAMES[spellName] then
         associate_spell_caster_with_spec(casterUid, spellName)
     end

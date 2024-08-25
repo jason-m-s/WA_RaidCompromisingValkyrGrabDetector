@@ -21,7 +21,7 @@ function(allstates, event, ...)
 
     if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_SUCCEEDED" then
         local casterUid, spellName = ...
-        aura_env.process_spell_cast(event, casterUid, spellName)
+        aura_env.process_spell_cast(allstates, event, casterUid, spellName)
         return
     end
 
@@ -38,4 +38,3 @@ function(allstates, event, ...)
         return aura_env.handle_vehicle_transitioning(allstates, event, uid)
     end
 end
-
